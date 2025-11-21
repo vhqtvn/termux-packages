@@ -22,7 +22,7 @@ jobs:
       packages: write
     steps:
     - name: Clone repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Patch
       run: ./patch-repo.sh
     - name: Build

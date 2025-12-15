@@ -32,7 +32,7 @@ jobs:
       - name: Create bootstrap archive
         run: ./scripts/vh-generate-bootstraps.sh --repository https://vsc.vhn.vn/termux-packages-24/  --architectures ${{ matrix.arch }} --add termux-elf-cleaner --add gnupg --add libacl --add libcap --add zstd --add brotli
       - name: Store artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bootstrap-archives-${{ matrix.arch }}-${{ github.sha }}
           path: "*.zip"

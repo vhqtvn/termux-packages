@@ -755,7 +755,6 @@ for (( i=0; i < ${#PACKAGE_LIST[@]}; i++ )); do
 			)
 			TERMUX_PKG_BUILDER_SCRIPT="$TERMUX_SCRIPTDIR/scripts/vh-load-override-packages.sh"
 		fi
-		set -o xtrace
 		termux_step_handle_buildarch
 
 		termux_step_cleanup_packages

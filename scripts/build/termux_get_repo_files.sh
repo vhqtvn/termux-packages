@@ -50,9 +50,12 @@ termux_get_repo_files() {
 							PACKAGES_HASH="$(./scripts/get_hash_from_file.py "${RELEASE_FILE}" "${arch}" "${TERMUX_REPO_COMPONENT[$idx]}")"
 
 							# If packages_hash = "" then the repo probably doesn't contain debs for $arch
-							[[ -n "$PACKAGES_HASH" ]] && \
-								termux_download "${repo_base}/${TERMUX_REPO_COMPONENT[$idx]}/binary-$arch/Packages" \
-										"${TERMUX_COMMON_CACHEDIR}-$arch/${dl_prefix}-Packages" "$PACKAGES_HASH" || exit 1
+							if [[ -n "$PACKAGES_HASH" ]]; then
+								termux_download \
+									"${repo_base}/${TERMUX_REPO_COMPONENT[$idx]}/binary-$arch/Packages" \
+									"${TERMUX_COMMON_CACHEDIR}-$arch/${dl_prefix}-Packages" \
+									"$PACKAGES_HASH" || exit 1
+							fi
 						done
 					fi
 					exit 0

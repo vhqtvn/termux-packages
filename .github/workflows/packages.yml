@@ -27,6 +27,8 @@ on:
 permissions: {} # none
 jobs:
   build:
+    env:
+      TERMUX_BUILDER_IMAGE_NAME: vanhoavn/vheditor-package-builder
     permissions:
       contents: read # actions/upload-artifact doesn't need contents: write
     runs-on: ubuntu-26.04
@@ -284,7 +286,7 @@ jobs:
     - name: Build docker image
       if: ${{ steps.build-info.outputs.needs-docker-build == 'true' }}
       run: |
-        docker build -t vanhoavn/vheditor-package-builder:latest scripts/
+        docker build -t "${TERMUX_BUILDER_IMAGE_NAME}:latest" scripts/
         docker buildx prune -af
 
     - name: Load Docker image
@@ -335,7 +337,7 @@ jobs:
         echo "packages: ${packages[*]}"
 
         if [[ "${#packages[@]}" -gt 0 ]]; then
-          TERMUX_BUILDER_IMAGE_NAME=vanhoavn/vheditor-package-builder ./scripts/run-docker.sh -d ./build-package.sh -I -C -a "${{ matrix.target_arch }}" "${packages[@]}"
+          ./scripts/run-docker.sh -d ./build-package.sh -I -C -a "${{ matrix.target_arch }}" "${packages[@]}"
         fi
     - name: Generate build artifacts
       if: always()

@@ -52,8 +52,7 @@ termux_get_repo_files() {
 							# If packages_hash = "" then the repo probably doesn't contain debs for $arch
 							[[ -n "$PACKAGES_HASH" ]] && \
 								termux_download "${repo_base}/${TERMUX_REPO_COMPONENT[$idx]}/binary-$arch/Packages" \
-										"${TERMUX_COMMON_CACHEDIR}-$arch/${dl_prefix}-Packages" "$PACKAGES_HASH" && \
-								exit 0
+										"${TERMUX_COMMON_CACHEDIR}-$arch/${dl_prefix}-Packages" "$PACKAGES_HASH" || exit 1
 						done
 					fi
 					exit 0

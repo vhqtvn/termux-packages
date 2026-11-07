@@ -17,8 +17,8 @@ on:
     - 'root-packages/**'
     - 'x11-packages/**'
     - 'packages-vh-override/**'
-    - 'root-vh-override/**'
-    - 'x11-vh-override/**'
+    - 'root-packages-vh-override/**'
+    - 'x11-packages-vh-override/**'
   workflow_dispatch:
     inputs:
       packages:
@@ -206,7 +206,7 @@ jobs:
         echo "packages: ${packages[*]}"
 
         skip_building=false
-        if grep -qx 'skip-building=true' "$GITHUB_OUTPUT"; then
+        if grep -qx 'skip-building=true' "$GITHUB_OUTPUT" || (( ${#packages[@]} == 0 )); then
           skip_building=true
         elif [[ "${#packages[@]}" -gt 0 ]]; then
           set +e
@@ -308,6 +308,7 @@ jobs:
         size /var/lib
         size /var/
     - name: Patch
+      if: ${{ steps.build-info.outputs.skip-building != 'true' }}
       run: ./patch-repo.sh
 
     - name: Build packages

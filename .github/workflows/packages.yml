@@ -133,27 +133,37 @@ jobs:
                 fi
               fi
             done<<<${CHANGED_FILES}
-            while read -r file; do
-              if ! [[ $file == ${repo_path}-vh-override/* ]]; then
-                # This file does not belong to a package, so ignore it
-                continue
-              fi
-              if [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]*)/([.a-z0-9+-]*).subpackage.sh$ ]]; then
-                true
-              elif [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]*)/.*$ ]]; then
-                # package, check if it was deleted or updated
+            while IFS= read -r file; do
+              [[ $file == "${repo_path}-vh-override/"* ]] || continue
+
+              if [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]+)/ ]]; then
                 pkg=${BASH_REMATCH[1]}
-                if [ -d "${repo_path}/${pkg}" ]; then
-                  echo "$pkg" >> ./built_${repo}_packages.txt
-                  for file in $(find "${repo_path}-vh-override/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
-                    echo "$(basename "${file%%.subpackage.sh}")" >> ./built_${repo}_subpackages.txt
-                  done
-                  for file in $(find "${repo_path}/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
-                    echo "$(basename "${file%%.subpackage.sh}")" >> ./built_${repo}_subpackages.txt
-                  done
-                fi
+                [[ -d "${repo_path}/${pkg}" ]] || continue
+
+                echo "$pkg" >> "./built_${repo}_packages.txt"
+
+                override_dir="${repo_path}-vh-override/${pkg}"
+
+                # Include subpackages; override scripts take precedence.
+                for subpkg_file in \
+                  "${repo_path}/${pkg}/"*.subpackage.sh \
+                  "${override_dir}/"*.subpackage.sh; do
+
+                  [[ -f "$subpkg_file" ]] || continue
+
+                  # Ignore upstream definition when an override exists.
+                  if [[ $subpkg_file == "${repo_path}/${pkg}/"* ]] &&
+                    [[ -f "${override_dir}/$(basename "$subpkg_file")" ]]; then
+                    continue
+                  fi
+
+                  subpkg_repo=$(subpkg_repo_name "$subpkg_file" "$repo")
+                  subpkg_name=$(basename "${subpkg_file%.subpackage.sh}")
+
+                  echo "$subpkg_name" >> "./built_${subpkg_repo}_subpackages.txt"
+                done
               fi
-            done<<<${CHANGED_FILES}
+            done <<< "$CHANGED_FILES"
           done
         else
           # Ensure MANUAL_INPUT_PACKAGES is newline free, and put it
@@ -342,10 +352,15 @@ jobs:
           test -f ./deleted_${repo}_packages.txt && mv ./deleted_${repo}_packages.txt ./debs/
           # Move only debs from built_packages into debs/ folder before
           # creating an archive.
-          while read -r pkg; do
-            # Match both $pkg.deb and $pkg-static.deb.
-            find output \( -name "$pkg_*.deb" -o -name "$pkg-static_*.deb" \) -type f -print0 | xargs -0r mv -t debs/
-          done < <(cat ./debs/built_${repo}_packages.txt)
+          if [[ -f "./debs/built_${repo}_packages.txt" && -d output ]]; then
+            while IFS= read -r pkg; do
+              [[ -n "$pkg" ]] || continue
+
+              find output \
+                \( -name "${pkg}_*.deb" -o -name "${pkg}-static_*.deb" \) \
+                -type f -print0 | xargs -0r mv -t debs/
+            done < "./debs/built_${repo}_packages.txt"
+          fi
         done
         # Files containing certain symbols (e.g. ":") will cause failure in actions/upload-artifact.
         # Archiving *.deb files in a tarball to avoid issues with uploading.

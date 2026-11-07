@@ -36,10 +36,13 @@ jobs:
       fail-fast: false
     steps:
     - name: Clone repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         fetch-depth: 1000
     - name: Gather build summary
+      id: build-info
+      env:
+        MANUAL_INPUT_PACKAGES: ${{ github.event.inputs.packages }}
       run: |
         BASE_COMMIT=$(jq --raw-output .pull_request.base.sha "$GITHUB_EVENT_PATH")
         OLD_COMMIT=$(jq --raw-output .commits[0].id "$GITHUB_EVENT_PATH")
@@ -97,14 +100,7 @@ jobs:
             echo "[!] Force exiting as tag '%ci:no-build' was applied to HEAD commit message."
             exit 0
           fi
-          # Build local Docker image if setup scripts were changed.
-          # Useful for pull requests submitting changes for both build environment and packages.
-          if grep -qP '^scripts/(Dockerfile|properties\.sh|setup-android-sdk\.sh|setup-ubuntu\.sh)$' <<< "$CHANGED_FILES"; then
-            echo "Detected changes for environment setup scripts. Building custom Docker image now."
-            cd ./scripts
-            docker build -t vanhoavn/vheditor-package-builder:latest . || true
-            cd ..
-          fi
+
           for repo_path in $(jq --raw-output 'del(.pkg_format) | keys | .[]' repo.json); do
             repo=$(jq --raw-output '.["'${repo_path}'"].name' repo.json)
             # Parse changed files and identify new packages and deleted packages.
@@ -132,33 +128,17 @@ jobs:
                   for file in $(find "${repo_path}/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
                     echo "$(basename "${file%%.subpackage.sh}")" >> ./built_$(subpkg_repo_name "$file" "$repo")_subpackages.txt
                   done
-                fi
-              fi
-            done<<<${CHANGED_FILES}
-            while read -r file; do
-              if ! [[ $file == ${repo_path}-vh-override/* ]]; then
-                # This file does not belong to a package, so ignore it
-                continue
-              fi
-              if [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]*)/([.a-z0-9+-]*).subpackage.sh$ ]]; then
-                true
-              elif [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]*)/.*$ ]]; then
-                # package, check if it was deleted or updated
-                pkg=${BASH_REMATCH[1]}
-                if [ -d "${repo_path}/${pkg}" ]; then
-                  echo "$pkg" >> ./built_${repo}_packages.txt
-                  for file in $(find "${repo_path}-vh-override/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
-                    echo "$(basename "${file%%.subpackage.sh}")" >> ./built_${repo}_subpackages.txt
-                  done
-                  for file in $(find "${repo_path}/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
-                    echo "$(basename "${file%%.subpackage.sh}")" >> ./built_${repo}_subpackages.txt
-                  done
+                else
+                  echo "$pkg" >> ./deleted_${repo}_packages
                 fi
               fi
             done<<<${CHANGED_FILES}
           done
         else
-          for pkg in ${{ github.event.inputs.packages }}; do
+          # Ensure MANUAL_INPUT_PACKAGES is newline free, and put it
+          # into an array
+          read -a PACKAGES <<< "${MANUAL_INPUT_PACKAGES//$'\n'/ }"
+          for pkg in "${PACKAGES[@]}"; do
             repo_paths=$(jq --raw-output 'del(.pkg_format) | keys | .[]' repo.json)
             found=false
             for repo_path in $repo_paths; do
@@ -194,50 +174,137 @@ jobs:
           fi
         done
 
-    - name: Lint packages
-      run: |
-        declare -a package_recipes
+        declare -a packages=()
         for repo_path in $(jq --raw-output 'del(.pkg_format) | keys | .[]' repo.json); do
           repo=$(jq --raw-output '.["'${repo_path}'"].name' repo.json)
-          if [ -f ./built_${repo}_packages.txt ]; then
-            package_recipes="$package_recipes $(cat ./built_${repo}_packages.txt | repo_path=${repo_path} awk '{print ENVIRON["repo_path"]"/"$1"/build.sh"}')"
+          if [ -f "./built_${repo}_packages.txt" ]; then
+            packages+=($(cat "./built_${repo}_packages.txt"))
           fi
         done
 
-        if [ ! -z "$package_recipes" ]; then
-          ./scripts/lint-packages.sh $package_recipes
+        echo "packages: ${packages[*]}"
+
+        skip_building=false
+        if grep -qx 'skip-building=true' "$GITHUB_OUTPUT"; then
+          skip_building=true
+        elif [[ "${#packages[@]}" -gt 0 ]]; then
+          set +e
+          DRY_RUN_OUTPUT=$(./scripts/bin/build-package-dry-run-simulation.sh -I -C -a "${{ matrix.target_arch }}" "${packages[@]}" 2>&1)
+          DRY_RUN_RC=$?
+          set -e
+          echo "$DRY_RUN_OUTPUT"
+          if [ "$DRY_RUN_RC" -eq 85 ]; then
+            skip_building=true
+          fi
+        fi
+        echo "skip-building=$skip_building" >> $GITHUB_OUTPUT
+
+        free_space='false'
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          free_space=${{ github.event.inputs.free-space }}
+        else
+          if grep -qiP '^\s*%ci:free-disk\s*$' <(git log --format="%B" -n 1 --no-merges "HEAD"); then
+            free_space=true
+          fi
+        fi
+        if [[ "${#packages[@]}" -gt 0 ]]; then
+          for pkg in "${packages[@]}"; do
+            if grep -qFx "$pkg" ./scripts/big-pkgs.list; then
+              free_space='true'
+              break
+            fi
+          done
+        fi
+        echo "free-space=$free_space" >> $GITHUB_OUTPUT
+
+        needs_docker_build=false
+        if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          # Build local Docker image if setup scripts were changed.
+          # Useful for pull requests submitting changes for both build environment and packages.
+          if grep -qP '^scripts/(Dockerfile|properties\.sh|setup-android-sdk\.sh|setup-ubuntu\.sh)$' <<< "$CHANGED_FILES"; then
+            needs_docker_build=true
+          fi
+        fi
+        echo "needs-docker-build=$needs_docker_build" >> $GITHUB_OUTPUT
+
+    - name: Lint packages
+      run: |
+        declare -a package_recipes=()
+        for repo_path in $(jq --raw-output 'del(.pkg_format) | keys | .[]' repo.json); do
+          repo=$(jq --raw-output '.["'${repo_path}'"].name' repo.json)
+          if [ -f "./built_${repo}_packages.txt" ]; then
+            package_recipes+=($(cat "./built_${repo}_packages.txt" | repo_path="${repo_path}" awk '{print ENVIRON["repo_path"]"/"$1"/build.sh"}'))
+          fi
+        done
+
+        if [[ "${#package_recipes[@]}" -gt 0 ]]; then
+          ./scripts/lint-packages.sh "${package_recipes[@]}"
         fi
 
+    - name: Enable zram
+      if: ${{ steps.build-info.outputs.skip-building != 'true' }}
+      uses: ./.github/actions/zram
+      with:
+        algorithm: zstd
+        size: 16G
+        priority: 100
+        device_name: /dev/zram0
+
+    - name: Build docker image
+      if: ${{ steps.build-info.outputs.needs-docker-build == 'true' }}
+      run: |
+        docker build -t ghcr.io/termux/package-builder:latest scripts/
+        docker buildx prune -af
+
+    - name: Load Docker image
+      if: ${{ steps.build-info.outputs.free-space == 'true' && steps.build-info.outputs.skip-building != 'true' }}
+      run: |
+        ./scripts/run-docker.sh true
+
+    - name: Free additional disk space (if needed)
+      if: ${{ steps.build-info.outputs.free-space == 'true' && steps.build-info.outputs.skip-building != 'true' }}
+      run: |
+        ./scripts/free-space.sh
+
+    - name: List packages that are still installed on the server
+      if: ${{ steps.build-info.outputs.free-space == 'true' && steps.build-info.outputs.skip-building != 'true' && runner.debug }}
+      run: |
+        dpkg-query -W -f='${Installed-size} ${Package}\n' | sort -n
+
+    - name: List directory size for debug
+      if: ${{ steps.build-info.outputs.free-space == 'true' && steps.build-info.outputs.skip-building != 'true' && runner.debug }}
+      run: |
+        size() {
+          echo "Directory size info for '$1':"
+          du --bytes "$1" --max-depth 1 | sort -n
+          echo
+          echo
+          echo
+        }
+        size /
+        size /usr
+        size /var
+        size /var/lib
+        size /var/
     - name: Patch
       run: ./patch-repo.sh
 
     - name: Build packages
+      if: ${{ steps.build-info.outputs.skip-building != 'true' }}
       run: |
-        declare -a packages
+        declare -a packages=()
         for repo_path in $(jq --raw-output 'del(.pkg_format) | keys | .[]' repo.json); do
           repo=$(jq --raw-output '.["'${repo_path}'"].name' repo.json)
-
-          if [ -f ./built_${repo}_packages.txt ]; then
-            packages="$packages $(cat ./built_${repo}_packages.txt | tr '\n' ' ')"
+          if [ -f "./built_${repo}_packages.txt" ]; then
+            packages+=($(cat "./built_${repo}_packages.txt"))
           fi
         done
 
-        if [ ! -z "$packages" ]; then
-          if grep -qP "(^|\\s)${packages// /($|\\s)|(^|\\s)}($|\\s)" ./scripts/big-pkgs.list; then
-            ./scripts/setup-ubuntu.sh
-            # need to unset these for setup-android-sdk.sh.
-            unset NDK ANDROID_HOME
-            ./scripts/setup-android-sdk.sh
-            rm -f ${HOME}/lib/ndk-*.zip ${HOME}/lib/sdk-*.zip
-            sudo apt install ninja-build
-            ./scripts/free-space.sh
-            sudo rm -fr /opt/hostedtoolcache /usr/share/dotnet /usr/share/swift
-            TERMUX_BUILDER_IMAGE_NAME=vanhoavn/vheditor-package-builder NDK=$ANDROID_NDK_LATEST_HOME ANDROID_HOME=$ANDROID_SDK_ROOT ./build-package.sh -I -a ${{ matrix.target_arch }} $packages
-          else
-            TERMUX_BUILDER_IMAGE_NAME=vanhoavn/vheditor-package-builder ./scripts/run-docker.sh ./build-package.sh -I -a ${{ matrix.target_arch }} $packages
-          fi
-        fi
+        echo "packages: ${packages[*]}"
 
+        if [[ "${#packages[@]}" -gt 0 ]]; then
+          ./scripts/run-docker.sh -d ./build-package.sh -I -C -a "${{ matrix.target_arch }}" "${packages[@]}"
+        fi
     - name: Generate build artifacts
       if: always()
       run: |

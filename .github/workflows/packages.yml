@@ -284,7 +284,7 @@ jobs:
     - name: Build docker image
       if: ${{ steps.build-info.outputs.needs-docker-build == 'true' }}
       run: |
-        docker build -t ghcr.io/termux/package-builder:latest scripts/
+        docker build -t vanhoavn/vheditor-package-builder:latest scripts/
         docker buildx prune -af
 
     - name: Load Docker image
@@ -335,7 +335,7 @@ jobs:
         echo "packages: ${packages[*]}"
 
         if [[ "${#packages[@]}" -gt 0 ]]; then
-          ./scripts/run-docker.sh -d ./build-package.sh -I -C -a "${{ matrix.target_arch }}" "${packages[@]}"
+          TERMUX_BUILDER_IMAGE_NAME=vanhoavn/vheditor-package-builder ./scripts/run-docker.sh -d ./build-package.sh -I -C -a "${{ matrix.target_arch }}" "${packages[@]}"
         fi
     - name: Generate build artifacts
       if: always()

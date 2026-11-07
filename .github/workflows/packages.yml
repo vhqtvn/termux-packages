@@ -133,6 +133,27 @@ jobs:
                 fi
               fi
             done<<<${CHANGED_FILES}
+            while read -r file; do
+              if ! [[ $file == ${repo_path}-vh-override/* ]]; then
+                # This file does not belong to a package, so ignore it
+                continue
+              fi
+              if [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]*)/([.a-z0-9+-]*).subpackage.sh$ ]]; then
+                true
+              elif [[ $file =~ ^${repo_path}-vh-override/([.a-z0-9+-]*)/.*$ ]]; then
+                # package, check if it was deleted or updated
+                pkg=${BASH_REMATCH[1]}
+                if [ -d "${repo_path}/${pkg}" ]; then
+                  echo "$pkg" >> ./built_${repo}_packages.txt
+                  for file in $(find "${repo_path}-vh-override/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
+                    echo "$(basename "${file%%.subpackage.sh}")" >> ./built_${repo}_subpackages.txt
+                  done
+                  for file in $(find "${repo_path}/${pkg}/" -maxdepth 1 -type f -name \*.subpackage.sh | sort); do
+                    echo "$(basename "${file%%.subpackage.sh}")" >> ./built_${repo}_subpackages.txt
+                  done
+                fi
+              fi
+            done<<<${CHANGED_FILES}
           done
         else
           # Ensure MANUAL_INPUT_PACKAGES is newline free, and put it

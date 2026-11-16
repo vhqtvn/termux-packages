@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys
+import os, sys
 
 gcontent = ''
 
@@ -19,7 +19,7 @@ def get_pkg_hash_from_Packages(Packages_file, package, version, hash="SHA256"):
                     xgcontent += line.split(" ")[1] + " " + "\n"
                     has_name = True
                 elif line.startswith('Version:'):
-                    if line != 'Version: '+version:
+                    if os.getenv('TERMUX_WITHOUT_DEPVERSION_BINDING') != 'true' and line != 'Version: '+version:
                         # Seems the repo contains the wrong version, or several versions
                         # We can't use this one so continue looking
                         break

@@ -36,6 +36,7 @@ termux_setup_ghc() {
 
 		mkdir -p "$TERMUX_GHC_RUNTIME_FOLDER" "$TERMUX_GHC_TEMP_FOLDER"
 		tar -xf "$TERMUX_GHC_TAR" -C "$TERMUX_GHC_TEMP_FOLDER" --strip-components=1
+		env "REPLACE_ROOT_DIR=${TERMUX_GHC_TEMP_FOLDER}" bash "${TERMUX_SCRIPTDIR}/patch-repo.sh"
 
 		(
 			set -e

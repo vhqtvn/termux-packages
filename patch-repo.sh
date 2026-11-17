@@ -21,6 +21,8 @@ fi
 
 do_replace() {
     local tmp_file
+	local match="${1#s#}"
+	match="${match%%#*}"
     tmp_file="$(mktemp "${TMPDIR:-/tmp}/mtime.XXXXXXXX")" || return 1
 
     find . \
@@ -31,6 +33,7 @@ do_replace() {
         -o -iname 'vh-tmp-*' \) -prune \
         -o -type f -print0 |
     while IFS= read -r -d '' f; do
+		LC_ALL=C grep -qE -- "$match" "$f" || continue
         touch -r "$f" "$tmp_file" || continue
 
         LC_ALL=C sed "${INPLACE_OPT[@]}" -e "$1" "$f" 2>&1 || true

@@ -47,6 +47,10 @@ if [[ "${1:-}" == "--reverse" ]] || [[ "${1:-}" == "-r" ]]; then
 	if [[ -n "$SCOPED_REPLACE" ]]; then
 		rm -f "${HOME}/.termuxrc"
 
+		if [[ -f repo.json.~ ]]; then
+			cp repo.json.~ repo.json
+		fi
+
 		if [[ -f scripts/build/termux_step_setup_variables.sh ]]; then
 			if [[ -f scripts/build/termux_step_setup_variables.sh.~ ]]; then
 				cp scripts/build/termux_step_setup_variables.sh.~ \
@@ -122,6 +126,21 @@ OVERRIDE
 					< "$ff.~" > "$ff"
 			fi
 		done
+
+		if [[ -f repo.json ]] && [[ ! -f repo.json.~ ]]; then
+			cp repo.json repo.json.~
+			cat <<OVERRIDE > repo.json
+{
+  "pkg_format": "debian",
+  "packages": {
+    "name": "termux-main",
+    "distribution": "stable",
+    "component": "main",
+    "url": "https://vsc.vhn.vn/termux-packages-24"
+  }
+}
+OVERRIDE
+		fi
 	fi
 
     do_replace 's#com[.]termux#vn.vh''n.vsc#g'

@@ -145,4 +145,9 @@ OVERRIDE
 
     do_replace 's#com[.]termux#vn.vh''n.vsc#g'
     do_replace 's#xumret[.]moc#csv.nh''v.nv#g'
+
+    if [[ "${TERMUX_PKG_BUILDER_DIR##*/}" == rust && -d vendor ]]; then
+        find vendor -type f -name .cargo-checksum.json \
+            -exec sed "${INPLACE_OPT[@]}" -E 's/"files":[[:space:]]*\{[^}]*\}/"files":{}/' {} +
+    fi
 fi

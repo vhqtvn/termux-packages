@@ -44,7 +44,7 @@ do_replace() {
 if [[ "${1:-}" == "--reverse" ]] || [[ "${1:-}" == "-r" ]]; then
     echo "* Replace vsc->termux in $PWD"
 
-	if [[ -n "$SCOPED_REPLACE" ]]; then
+	if [[ -z "$SCOPED_REPLACE" ]]; then
 		rm -f "${HOME}/.termuxrc"
 
 		if [[ -f repo.json.~ ]]; then
@@ -78,7 +78,7 @@ else
     TMPK="vn.vh""n.vsc"
     echo "* Replace termux->vsc in $PWD"
 
-	if [[ -n "$SCOPED_REPLACE" ]]; then
+	if [[ -z "$SCOPED_REPLACE" ]]; then
 	    cat <<OVERRIDE > "${HOME}/.termuxrc"
 TERMUX_REPO_PACKAGE="$TMPK"
 

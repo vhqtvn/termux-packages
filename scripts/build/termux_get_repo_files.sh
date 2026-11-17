@@ -46,17 +46,26 @@ termux_get_repo_files() {
 					fi
 
 					if [[ "$TERMUX_REPO_PKG_FORMAT" == "debian" ]]; then
+						local snapshot_ok=true
 						for arch in all "${TERMUX_ARCH}"; do
 							PACKAGES_HASH="$(./scripts/get_hash_from_file.py "${RELEASE_FILE}" "${arch}" "${TERMUX_REPO_COMPONENT[$idx]}")"
 
 							# If packages_hash = "" then the repo probably doesn't contain debs for $arch
 							if [[ -n "$PACKAGES_HASH" ]]; then
-								termux_download \
+								if ! termux_download \
 									"${repo_base}/${TERMUX_REPO_COMPONENT[$idx]}/binary-$arch/Packages" \
 									"${TERMUX_COMMON_CACHEDIR}-$arch/${dl_prefix}-Packages" \
-									"$PACKAGES_HASH" || exit 1
+									"$PACKAGES_HASH"; then
+									snapshot_ok=false
+									break
+								fi
 							fi
 						done
+						if [[ "$snapshot_ok" != true ]]; then
+							echo "Failed to download package repository metadata. Retrying in $delay seconds."
+							sleep "$delay"
+							continue
+						fi
 					fi
 					exit 0
 				fi

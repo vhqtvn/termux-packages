@@ -151,6 +151,6 @@ OVERRIDE
 
     if [[ "${TERMUX_PKG_BUILDER_DIR##*/}" == rust && -d vendor ]]; then
         find vendor -type f -name .cargo-checksum.json \
-            -exec sed "${INPLACE_OPT[@]}" -E 's/"files":[[:space:]]*\{[^}]*\}/"files":{}/' {} +
+            -exec sed "${INPLACE_OPT[@]}" -E 's/"files":[[:space:]]*\{[^}]*\}/"files":{ }/' {} +
     fi
 fi
